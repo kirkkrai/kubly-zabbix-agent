@@ -9,16 +9,12 @@ echo "Installing Zabbix Agent 6.0 (Active via Proxy)..."
 apt update -y
 apt install -y wget gnupg
 
-if [ ! -f /etc/apt/sources.list.d/zabbix.list ]; then
-    wget -q https://repo.zabbix.com/zabbix/6.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_6.0-4+ubuntu24.04_all.deb
-    dpkg -i zabbix-release_6.0-4+ubuntu24.04_all.deb
-    rm -f zabbix-release_6.0-4+ubuntu24.04_all.deb
-    apt update -y
-fi
+wget -q https://repo.zabbix.com/zabbix/6.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_6.0-4+ubuntu24.04_all.deb
+dpkg -i zabbix-release_6.0-4+ubuntu24.04_all.deb
+rm -f zabbix-release_6.0-4+ubuntu24.04_all.deb
 
-if ! dpkg -l | grep -q zabbix-agent; then
-    apt install -y zabbix-agent
-fi
+apt update -y
+apt install -y zabbix-agent
 
 cp /etc/zabbix/zabbix_agentd.conf /etc/zabbix/zabbix_agentd.conf.bak.$(date +%F_%T)
 
