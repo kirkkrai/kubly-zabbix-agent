@@ -1,87 +1,82 @@
 #!/bin/bash
-
 # ==========================================
-# ZABBIX AGENT ACTIVE-ONLY INSTALL SCRIPT
-# Hardened Production Version
+# ZABBIX AGENT PRODUCTION INSTALL SCRIPT
+# Server 6.0 | Agent 6.4 (Ubuntu 24.04)
+# Active Only Mode
 # ==========================================
 
 set -e
 
-### ===== CONFIG =====
 PROXY_IP="203.151.50.253"
-CONF_FILE="/etc/zabbix/zabbix_agentd.conf"
-
 CUSTOMER_CODE="$1"
 HOST_SHORT="$2"
 
-### ===== PRECHECK =====
 if [ "$EUID" -ne 0 ]; then
-    echo "❌ Please run as root or sudo."
-    exit 1
+  echo "❌ Run as root"
+  exit 1
 fi
 
 if [ -z "$CUSTOMER_CODE" ] || [ -z "$HOST_SHORT" ]; then
-    echo "Usage: $0 <CUSTOMER_CODE> <HOST_SHORTNAME>"
-    exit 1
+  echo "Usage: $0 <CUSTOMER_CODE> <HOST_SHORTNAME>"
+  exit 1
 fi
 
-if ! systemctl list-unit-files | grep -q zabbix-agent; then
-    echo "❌ Zabbix agent service not found. Please install first."
-    exit 1
+. /etc/os-release
+UBUNTU_MAJOR=$(echo $VERSION_ID | cut -d'.' -f1)
+
+echo "🔎 OS detected: Ubuntu $VERSION_ID"
+
+# Install Zabbix repo if not exists
+if ! dpkg -l | grep -q zabbix-release; then
+  echo "📦 Installing Zabbix 6.4 repo..."
+  wget -q https://repo.zabbix.com/zabbix/6.4/ubuntu/pool/main/z/zabbix-release/zabbix-release_6.4-1+ubuntu${UBUNTU_MAJOR}.04_all.deb
+  dpkg -i zabbix-release_6.4-1+ubuntu${UBUNTU_MAJOR}.04_all.deb
+  apt update -qq
 fi
 
-if [ ! -f "$CONF_FILE" ]; then
-    echo "❌ Config file not found: $CONF_FILE"
-    exit 1
+# Install agent if not installed
+if ! dpkg -l | grep -q zabbix-agent; then
+  echo "📦 Installing Zabbix Agent..."
+  apt install -y zabbix-agent
 fi
 
-### ===== BUILD HOSTNAME =====
-HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
-if [ -z "$HOST_IP" ]; then
-    HOST_IP=$(ip route get 1 | awk '{print $7;exit}')
-fi
+SERVICE="zabbix-agent"
+CONF="/etc/zabbix/zabbix_agentd.conf"
 
+HOST_IP=$(hostname -I | awk '{print $1}')
 FULL_HOSTNAME="${CUSTOMER_CODE}_${HOST_SHORT}_${HOST_IP}"
 
-echo "================================="
-echo "Zabbix Active Agent Setup"
-echo "Proxy      : $PROXY_IP"
-echo "Hostname   : $FULL_HOSTNAME"
-echo "================================="
+echo "---------------------------------"
+echo " Proxy: $PROXY_IP"
+echo " Host:  $FULL_HOSTNAME"
+echo "---------------------------------"
 
-### ===== BACKUP =====
-BACKUP_FILE="${CONF_FILE}.bak.$(date +%Y%m%d%H%M%S)"
-cp "$CONF_FILE" "$BACKUP_FILE"
-echo "✔ Backup created: $BACKUP_FILE"
+# Backup config
+cp "$CONF" "${CONF}.bak.$(date +%Y%m%d%H%M%S)"
 
-### ===== CLEAN DUPLICATE KEYS =====
-sed -i '/^Server=/d' "$CONF_FILE"
-sed -i '/^ServerActive=/d' "$CONF_FILE"
-sed -i '/^Hostname=/d' "$CONF_FILE"
+# Clean old config
+sed -i '/^Server=/d' "$CONF"
+sed -i '/^ServerActive=/d' "$CONF"
+sed -i '/^Hostname=/d' "$CONF"
+sed -i '/^StartAgents=/d' "$CONF"
 
-### ===== WRITE CONFIG =====
-echo "Server=${PROXY_IP}" >> "$CONF_FILE"
-echo "ServerActive=${PROXY_IP}" >> "$CONF_FILE"
-echo "Hostname=${FULL_HOSTNAME}" >> "$CONF_FILE"
+# Write active-only config
+echo "Server=${PROXY_IP}" >> "$CONF"
+echo "ServerActive=${PROXY_IP}" >> "$CONF"
+echo "Hostname=${FULL_HOSTNAME}" >> "$CONF"
+echo "StartAgents=0" >> "$CONF"
 
-echo "✔ Configuration written"
-
-### ===== RESTART SERVICE =====
 systemctl daemon-reload
-systemctl restart zabbix-agent || systemctl restart zabbix-agent2
-sleep 3
+systemctl enable "$SERVICE"
+systemctl restart "$SERVICE"
 
-if systemctl is-active --quiet zabbix-agent || systemctl is-active --quiet zabbix-agent2; then
-    echo "✔ Zabbix agent restarted successfully"
+sleep 2
+
+if systemctl is-active --quiet "$SERVICE"; then
+  echo "✅ Agent Ready (Active Mode)"
 else
-    echo "❌ Failed to restart Zabbix agent"
-    exit 1
+  echo "❌ Agent failed to start"
+  exit 1
 fi
 
-### ===== VERIFY =====
-echo "---- Recent agent log ----"
-tail -n 5 /var/log/zabbix/zabbix_agentd.log || true
-
-echo "================================="
-echo "✅ ACTIVE MODE READY"
-echo "================================="
+tail -n 5 /var/log/zabbix/*agent*.log || true
