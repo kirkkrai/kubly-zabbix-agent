@@ -7,11 +7,13 @@ HOSTNAME=$(hostname)
 echo "Installing Zabbix Agent 6.0 (Active via Proxy)..."
 
 apt update -y
-apt install -y wget gnupg
+apt install -y wget gnupg ca-certificates
 
-wget -q https://repo.zabbix.com/zabbix/6.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_6.0-4+ubuntu24.04_all.deb
-dpkg -i zabbix-release_6.0-4+ubuntu24.04_all.deb
-rm -f zabbix-release_6.0-4+ubuntu24.04_all.deb
+# Add Zabbix repo (Ubuntu 24.04 noble)
+wget -qO - https://repo.zabbix.com/zabbix-official-repo.key | gpg --dearmor -o /usr/share/keyrings/zabbix.gpg
+
+echo "deb [signed-by=/usr/share/keyrings/zabbix.gpg] https://repo.zabbix.com/zabbix/6.0/ubuntu noble main" \
+  > /etc/apt/sources.list.d/zabbix.list
 
 apt update -y
 apt install -y zabbix-agent
