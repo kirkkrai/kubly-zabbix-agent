@@ -1,0 +1,1 @@
+# kubly-zabbix-agent
