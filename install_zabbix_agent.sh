@@ -1,41 +1,42 @@
 #!/bin/bash
 # ==========================================
 # ZABBIX AGENT PRODUCTION INSTALL SCRIPT
-# Server 6.0 | Agent 6.4 (Ubuntu 24.04)
-# Active Only Mode
+# Auto Hostname | Active Only | Ubuntu 24.04
+# Server 6.0 Compatible
 # ==========================================
 
-set -e
+set -euo pipefail
 
 PROXY_IP="203.151.50.253"
-CUSTOMER_CODE="$1"
-HOST_SHORT="$2"
+CUSTOMER_CODE="${1:-}"
 
 if [ "$EUID" -ne 0 ]; then
   echo "❌ Run as root"
   exit 1
 fi
 
-if [ -z "$CUSTOMER_CODE" ] || [ -z "$HOST_SHORT" ]; then
-  echo "Usage: $0 <CUSTOMER_CODE> <HOST_SHORTNAME>"
+if [ -z "$CUSTOMER_CODE" ]; then
+  echo "Usage: $0 <CUSTOMER_CODE>"
   exit 1
 fi
 
+# Detect OS
 . /etc/os-release
 UBUNTU_MAJOR=$(echo $VERSION_ID | cut -d'.' -f1)
 
 echo "🔎 OS detected: Ubuntu $VERSION_ID"
 
-# Install Zabbix repo if not exists
-if ! dpkg -l | grep -q zabbix-release; then
+# Install Zabbix repo (6.4 supports Ubuntu 24.04)
+if ! dpkg -s zabbix-release &>/dev/null; then
   echo "📦 Installing Zabbix 6.4 repo..."
   wget -q https://repo.zabbix.com/zabbix/6.4/ubuntu/pool/main/z/zabbix-release/zabbix-release_6.4-1+ubuntu${UBUNTU_MAJOR}.04_all.deb
   dpkg -i zabbix-release_6.4-1+ubuntu${UBUNTU_MAJOR}.04_all.deb
   apt update -qq
+  rm -f zabbix-release_*.deb
 fi
 
-# Install agent if not installed
-if ! dpkg -l | grep -q zabbix-agent; then
+# Install agent if not exists
+if ! dpkg -s zabbix-agent &>/dev/null; then
   echo "📦 Installing Zabbix Agent..."
   apt install -y zabbix-agent
 fi
@@ -43,6 +44,7 @@ fi
 SERVICE="zabbix-agent"
 CONF="/etc/zabbix/zabbix_agentd.conf"
 
+HOST_SHORT=$(hostname -s)
 HOST_IP=$(hostname -I | awk '{print $1}')
 FULL_HOSTNAME="${CUSTOMER_CODE}_${HOST_SHORT}_${HOST_IP}"
 
